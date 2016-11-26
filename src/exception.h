@@ -20,6 +20,7 @@ public:
 		C_Transport_Greeter_Corrupt,
 		C_Transport_Version_Mismatch,
 		C_Transport_Invalid_Length,
+		C_HostKey_Signature_Rejected,
 	};
 
 	Exception(Code code, const char* param = "")

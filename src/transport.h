@@ -33,6 +33,8 @@ public:
 	std::string& SessionIdentifier() { return m_SessionID; }
 	void SendDisconnect();
 
+	Callback& GetCallback() { return m_Callback; }
+
 	//! Requests a service
 	void RequestService(const char* serviceName);
 

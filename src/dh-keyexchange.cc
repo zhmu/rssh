@@ -1,4 +1,5 @@
 #include "dh-keyexchange.h"
+#include "callback.h"
 #include "exception.h"
 #include "keys.h"
 #include "numbers.h"
@@ -7,6 +8,7 @@
 #include "trace.h"
 #include "transport.h"
 
+#include "cryptopp/base64.h"
 #include "cryptopp/dh.h"
 #include "cryptopp/nbtheory.h"
 
@@ -91,11 +93,38 @@ void DHKeyExchange::OnReply(Buffer& buffer)
 		sha1.Final(hash_H);
 	}
 
+	// [SSH-TRANS, 8] Verify that K_S really is the host key for S
+	{
+		/*
+		 * Even if not in the SSH specification, OpenSSH seems to
+		 * take the SHA256 hash of the public key and Base64 encode
+		 * it as an identifier. This seems sensible enough, so we
+		 * just do the same.
+		 */
+		std::string pk_hash_base64;
+		{
+			uint8_t pk_hash[CryptoPP::SHA256::DIGESTSIZE];
+			CryptoPP::SHA256 sha256;
+			sha256.Update((const uint8_t*)publickey.c_str(), publickey.size());
+			sha256.Final(pk_hash);
+
+			CryptoPP::Base64Encoder encoder;
+			encoder.Attach(new CryptoPP::StringSink(pk_hash_base64));
+			encoder.Put(pk_hash, sizeof(pk_hash));
+			encoder.MessageEnd();
+		}
+		Trace::Info("public key signature: %s", pk_hash_base64.c_str());
+
+		if (!m_Transport.GetCallback().OnVerifyHostKeySignature(pk_hash_base64))
+			throw Exception(Exception::C_HostKey_Signature_Rejected);
+	}
+
 	// [SSH-TRANS, 8] Verify the RSA signature
 	{
 		RSAPublicKey pk((const uint8_t*)publickey.c_str(), publickey.size());
 		if (!pk.Verify((const uint8_t*)signature.c_str(), signature.size(), hash_H, sizeof(hash_H)))
 			throw Exception(Exception::C_PK_Signature_Mismatch);
+
 	}
 
 	// [SSH-TRANS, 7.2] Derive keys

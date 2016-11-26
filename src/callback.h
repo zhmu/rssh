@@ -23,6 +23,9 @@ public:
 	//! Returns the username to use
 	virtual std::string GetUserName() = 0;
 
+	//! Called to verify the host key signature, Base64-encoded. Return true to accept
+	virtual bool OnVerifyHostKeySignature(const std::string& signature) { return false; }
+
 	//! Authentication prompts; on return, provide the replies in 'm_Reply' and return true
 	virtual bool OnAuthenticationPrompt(std::vector<RSSH::AuthenticationPrompt>& prompts) { return false; }
 };

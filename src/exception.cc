@@ -27,6 +27,8 @@ const char* Exception::what() const noexcept
 			return "invalid length received";
 		case C_Transport_Version_Mismatch:
 			return "version mismatch";
+		case C_HostKey_Signature_Rejected:
+			return "hostkey signature rejected";
 	}
 	return "?";
 }

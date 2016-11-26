@@ -107,6 +107,11 @@ main(int argc, char* argv[])
 			return result;
 		}
 
+		bool OnVerifyHostKeySignature(const std::string& signature) override {
+			printf("Accepting server hostkey signature: %s\n", signature.c_str());
+			return true;
+		}
+
 		void SetUsername(const std::string& username) {
 			m_Username = username;
 		}
