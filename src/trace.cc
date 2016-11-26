@@ -1,4 +1,5 @@
 #include "trace.h"
+#include <stdarg.h>
 #include <stdio.h>
 
 namespace RSSH {
