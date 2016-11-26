@@ -1,0 +1,18 @@
+[SSH-ARCH]     Ylonen, T. and C. Lonvick, Ed., "The Secure Shell
+               (SSH) Protocol Architecture", RFC 4251, January 2006.
+
+[SSH-TRANS]    Ylonen, T. and C. Lonvick, Ed., "The Secure Shell
+               (SSH) Transport Layer Protocol", RFC 4253, January
+               2006.
+
+[SSH-USERAUTH] Ylonen, T. and C. Lonvick, Ed., "The Secure Shell
+               (SSH) Authentication Protocol", RFC 4252, January
+               2006.
+
+[SSH-NUMBERS]  Lehtinen, S. and C. Lonvick, Ed., "The Secure Shell
+               (SSH) Protocol Assigned Numbers", RFC 4250, January
+               2006.
+
+[KBD-INT]      Cusack, F. and Forssen, M. "Generic Message Exchange
+               Authentication for the Secure Shell Protocol (SSH)",
+               RFC 4256, January 2006.
