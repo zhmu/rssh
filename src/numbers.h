@@ -147,7 +147,7 @@ enum class PseudoTerminalMode : uint8_t {
 // 4.7 Service Names
 namespace ServiceNames {
 	static const char* UserAuth = "ssh-userauth";
-	static const char* Connection = "ssh-userauth";
+	static const char* Connection = "ssh-connection";
 };
 
 // 4.8 Authentication Method Names
