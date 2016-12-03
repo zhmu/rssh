@@ -46,6 +46,8 @@ public:
 	void TransmitChannelData(int channelId, const std::string& data);
 	void AdjustChannelWindow(int channelId, unsigned int bytesToAdd);
 
+	const Socket& GetSocket() const { return m_Socket; }
+
 private:
 	void SendKexInitReply();
 	void OnMessageKexInit(Buffer& buffer, size_t packetLength, size_t paddingLength);

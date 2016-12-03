@@ -33,6 +33,12 @@ public:
 	//! Send the buffer
 	bool Transmit(Buffer& buffer);
 
+	/*! \brief Retrieve the socket's file descriptor
+	 *
+	 *  This is intended for use in things like select(2).
+	 */
+	int GetFD() const { return m_FD; }
+
 private:
 	//! File descriptor
 	int m_FD;

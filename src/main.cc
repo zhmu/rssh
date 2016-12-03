@@ -11,6 +11,7 @@
 #include "exception.h"
 #include "numbers.h"
 #include "transport.h"
+#include "types.h"
 
 namespace {
 
@@ -112,6 +113,40 @@ main(int argc, char* argv[])
 			return true;
 		}
 
+		void OnAuthenticationFailure(bool partial_success, const RSSH::Types::NameList& next_auths) override {
+			printf("authentication failed, partial success = %s, next %s", partial_success ? "yes" : "no", next_auths.ToString().c_str());
+		}
+
+		void OnAuthenticationSuccess() override {
+			m_Transport->OpenChannel(0, RSSH::Numbers::ConnectionProtocolAssignedNames::ChannelTypes::Session);
+		}
+
+		void OnChannelOpened(int channelNumber) override {
+			if (channelNumber == 0)
+				m_Transport->RequestPty(0, "xterm");
+		}
+
+		void OnServiceAccepted(const std::string& serviceName) override {
+			if (serviceName == RSSH::Numbers::ServiceNames::UserAuth) {
+				m_Transport->RequestUserAuth(RSSH::Numbers::ServiceNames::Connection, m_Username);
+			}
+		}
+
+		void OnChannelRequestSuccess(int channelNumber) override {
+			if (channelNumber == 0) /* PTY */ {
+				m_Transport->RequestChannel(0, RSSH::Numbers::ConnectionProtocolAssignedNames::RequestType::Shell);
+			}
+		}
+
+		void OnChannelRequestFailure(int channelNumber) override {
+			fprintf(stderr, "unable to open channel %d\n", channelNumber);
+		}
+
+		void OnChannelData(int channelNumber, const std::string& data) override {
+			write(STDOUT_FILENO, data.c_str(), data.length());
+			m_Transport->AdjustChannelWindow(channelNumber, data.size()); // XXX should we immediately do this?
+		}
+
 		void SetUsername(const std::string& username) {
 			m_Username = username;
 		}
@@ -134,8 +169,25 @@ main(int argc, char* argv[])
 	callback.SetUsername(username);
 	try {
 		t.Connect(host.c_str(), port);
-		for(;;)
-			t.Process();
+		int socketFd = t.GetSocket().GetFD();
+		for(;;) {
+			fd_set fds;
+			FD_ZERO(&fds);
+			FD_SET(STDIN_FILENO, &fds);
+			FD_SET(socketFd, &fds);
+
+			int n = select(socketFd + 1, &fds, NULL, NULL, NULL);
+			if (n < 0)
+				break;
+			if (FD_ISSET(socketFd, &fds))
+				t.Process();
+			if (FD_ISSET(STDIN_FILENO, &fds)) {
+				char buf[1024];
+				int n = read(STDIN_FILENO, buf, sizeof(buf));
+				if (n > 0)
+					t.TransmitChannelData(0, std::string(buf, n));
+			}
+		}
 	} catch (RSSH::Exception& e) {
 		fprintf(stderr, "exception: %s\n", e.what());
 	}
