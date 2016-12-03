@@ -199,6 +199,87 @@ void Transport::RequestService(const char* serviceName)
 	TransmitPacket(b);
 }
 
+void Transport::RequestPty(int recipientChannel, const char* term)
+{
+	// want pty
+	Buffer b;
+	b << static_cast<uint32_t>(0); // len
+	b << static_cast<uint8_t>(0); // padding len
+	b << static_cast<uint8_t>(Numbers::MessageID::SSH_MSG_CHANNEL_REQUEST);
+	b << static_cast<uint32_t>(recipientChannel);
+	b << std::string(Numbers::ConnectionProtocolAssignedNames::RequestType::PtyReq);
+	b << true; // want reply
+	b << std::string(term);
+	b << static_cast<uint32_t>(0);
+	b << static_cast<uint32_t>(0);
+	b << static_cast<uint32_t>(0);
+	b << static_cast<uint32_t>(0);
+	b << std::string();
+	TransmitPacket(b);
+}
+
+void Transport::RequestChannel(int recipientChannel, const std::string& requestType)
+{
+	Buffer b;
+	b << static_cast<uint32_t>(0); // len
+	b << static_cast<uint8_t>(0); // padding len
+	b << static_cast<uint8_t>(Numbers::MessageID::SSH_MSG_CHANNEL_REQUEST);
+	b << static_cast<uint32_t>(recipientChannel);
+	b << requestType;
+	b << true; // want reply
+	TransmitPacket(b);
+}
+
+void Transport::OpenChannel(int channelId, const char* name)
+{
+	Buffer b;
+	b << static_cast<uint32_t>(0); // len
+	b << static_cast<uint8_t>(0); // padding len
+	b << static_cast<uint8_t>(Numbers::MessageID::SSH_MSG_CHANNEL_OPEN);
+	b << std::string(name);
+	b << static_cast<uint32_t>(channelId); // sender channel
+	b << static_cast<uint32_t>(4096); // window size
+	b << static_cast<uint32_t>(1024); // max packet size
+	TransmitPacket(b);
+}
+
+void Transport::RequestUserAuth(const std::string& serviceName, const std::string& userName)
+{
+	Buffer b;
+	b << static_cast<uint32_t>(0); // len
+	b << static_cast<uint8_t>(0); // padding len
+	b << static_cast<uint8_t>(Numbers::MessageID::SSH_MSG_USERAUTH_REQUEST);
+	b << std::string(userName);
+	b << std::string(serviceName);
+	// XXX support 'password' too?
+	b << std::string(Numbers::AuthenticationMethodNames::KeyboardInteractive);
+	b << std::string(); // language tag
+	b << std::string(); // submethods
+	TransmitPacket(b);
+}
+
+void Transport::TransmitChannelData(int channelId, const std::string& data)
+{
+	Buffer b;
+	b << static_cast<uint32_t>(0); // len
+	b << static_cast<uint8_t>(0); // padding len
+	b << static_cast<uint8_t>(Numbers::MessageID::SSH_MSG_CHANNEL_DATA);
+	b << static_cast<uint32_t>(channelId);
+	b << data;
+	TransmitPacket(b);
+}
+
+void Transport::AdjustChannelWindow(int channelId, unsigned int bytesToAdd)
+{
+	Buffer b;
+	b << static_cast<uint32_t>(0); // len
+	b << static_cast<uint8_t>(0); // padding len
+	b << static_cast<uint8_t>(Numbers::MessageID::SSH_MSG_CHANNEL_WINDOW_ADJUST);
+	b << static_cast<uint32_t>(channelId);
+	b << static_cast<uint32_t>(bytesToAdd);
+	TransmitPacket(b);
+}
+
 void Transport::Process()
 {
 	if (!m_Socket.Fill(m_Buffer))
@@ -289,22 +370,11 @@ void Transport::Process()
 			}
 			case Numbers::MessageID::SSH_MSG_SERVICE_ACCEPT: {
 				Trace::Debug("got SSH_MSG_SERVICE_ACCEPT");
-				std::string channel_name;
-				m_Buffer >> channel_name;
+				std::string service_name;
+				m_Buffer >> service_name;
 
-				Trace::Info("channel accept [%s]", channel_name.c_str());
-				if (channel_name == "ssh-userauth") {
-					Buffer b;
-					b << static_cast<uint32_t>(0); // len
-					b << static_cast<uint8_t>(0); // padding len
-					b << static_cast<uint8_t>(Numbers::MessageID::SSH_MSG_USERAUTH_REQUEST);
-					b << std::string(m_Callback.GetUserName());
-					b << std::string("ssh-connection");
-					b << std::string(Numbers::AuthenticationMethodNames::KeyboardInteractive);
-					b << std::string(); // language tag
-					b << std::string(); // submethods
-					TransmitPacket(b);
-				}
+				Trace::Info("service accept [%s]", service_name.c_str());
+				m_Callback.OnServiceAccepted(service_name);
 				break;
 			}
 			case Numbers::MessageID::SSH_MSG_NEWKEYS: {
@@ -330,19 +400,7 @@ void Transport::Process()
 			case Numbers::MessageID::SSH_MSG_USERAUTH_SUCCESS: {
 				Trace::Debug("got SSH_MSG_USERAUTH_SUCCESS");
 
-				// Want session
-				{
-					Buffer b;
-					b << static_cast<uint32_t>(0); // len
-					b << static_cast<uint8_t>(0); // padding len
-					b << static_cast<uint8_t>(Numbers::MessageID::SSH_MSG_CHANNEL_OPEN);
-					b << std::string(Numbers::ConnectionProtocolAssignedNames::ChannelTypes::Session);
-					b << static_cast<uint32_t>(0);
-					b << static_cast<uint32_t>(4096); // window size
-					b << static_cast<uint32_t>(1024); // max packet size
-
-					TransmitPacket(b);
-				}
+				m_Callback.OnAuthenticationSuccess();
 				break;
 			}
 			case Numbers::MessageID::SSH_MSG_USERAUTH_INFO_REQUEST: {
@@ -381,7 +439,7 @@ void Transport::Process()
 				bool partial;
 				m_Buffer >> auths >> partial;
 
-				Trace::Info("authentication failed, partial success = %s, next %s", partial ? "yes" : "no", auths.ToString().c_str());
+				m_Callback.OnAuthenticationFailure(partial, auths);
 				break;
 			}
 			case Numbers::MessageID::SSH_MSG_CHANNEL_OPEN_CONFIRMATION: {
@@ -390,24 +448,7 @@ void Transport::Process()
 				m_Buffer >> channelNumber >> senderChannel >> initialWindowSize >> maxPacketSize;
 				Trace::Debug("channel %d sender %d iws %d mps %d", channelNumber, senderChannel, initialWindowSize, maxPacketSize);
 
-				if (channelNumber == 0) {
-					// want pty
-					Buffer b;
-					b << static_cast<uint32_t>(0); // len
-					b << static_cast<uint8_t>(0); // padding len
-					b << static_cast<uint8_t>(Numbers::MessageID::SSH_MSG_CHANNEL_REQUEST);
-					b << static_cast<uint32_t>(0);
-					b << std::string(Numbers::ConnectionProtocolAssignedNames::RequestType::PtyReq);
-					b << true; // want reply
-					b << std::string("xterm");
-					b << static_cast<uint32_t>(0);
-					b << static_cast<uint32_t>(0);
-					b << static_cast<uint32_t>(0);
-					b << static_cast<uint32_t>(0);
-					b << std::string();
-
-					TransmitPacket(b);
-				}
+				m_Callback.OnChannelOpened(channelNumber);
 				break;
 			}
 			case Numbers::MessageID::SSH_MSG_CHANNEL_SUCCESS: {
@@ -416,15 +457,16 @@ void Transport::Process()
 				m_Buffer >> channelNumber;
 				Trace::Debug("channel %d", channelNumber);
 
-				// want shell
-				Buffer b;
-				b << static_cast<uint32_t>(0); // len
-				b << static_cast<uint8_t>(0); // padding len
-				b << static_cast<uint8_t>(Numbers::MessageID::SSH_MSG_CHANNEL_REQUEST);
-				b << static_cast<uint32_t>(0);
-				b << std::string(Numbers::ConnectionProtocolAssignedNames::RequestType::Shell);
-				b << true; // want reply
-				TransmitPacket(b);
+				m_Callback.OnChannelRequestSuccess(channelNumber);
+				break;
+			}
+			case Numbers::MessageID::SSH_MSG_CHANNEL_FAILURE: {
+				Trace::Debug("got SSH_MSG_CHANNEL_FAILURE");
+				uint32_t channelNumber;
+				m_Buffer >> channelNumber;
+				Trace::Debug("channel %d", channelNumber);
+
+				m_Callback.OnChannelRequestFailure(channelNumber);
 				break;
 			}
 			case Numbers::MessageID::SSH_MSG_CHANNEL_DATA: {
@@ -433,7 +475,9 @@ void Transport::Process()
 				uint32_t channelNumber;
 				std::string data;
 				m_Buffer >> channelNumber >> data;
-				Trace::Info("channel %d data [%s]", channelNumber, data.c_str());
+				Trace::Info("channel %d data length %d", channelNumber, data.length());
+
+				m_Callback.OnChannelData(channelNumber, data);
 				break;
 			}
 #if 0

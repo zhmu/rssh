@@ -37,6 +37,14 @@ public:
 
 	//! Requests a service
 	void RequestService(const char* serviceName);
+	void RequestPty(int recipientChannel, const char* term);
+	void OpenChannel(int channelId, const char* name);
+
+	void RequestUserAuth(const std::string& serviceName, const std::string& userName);
+	void RequestChannel(int recipientChannel, const std::string& requestType);
+
+	void TransmitChannelData(int channelId, const std::string& data);
+	void AdjustChannelWindow(int channelId, unsigned int bytesToAdd);
 
 private:
 	void SendKexInitReply();
