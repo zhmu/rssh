@@ -10,6 +10,7 @@
 #include "callback.h"
 #include "exception.h"
 #include "numbers.h"
+#include "trace.h"
 #include "transport.h"
 #include "types.h"
 
@@ -114,7 +115,7 @@ main(int argc, char* argv[])
 		}
 
 		void OnAuthenticationFailure(bool partial_success, const RSSH::Types::NameList& next_auths) override {
-			printf("authentication failed, partial success = %s, next %s", partial_success ? "yes" : "no", next_auths.ToString().c_str());
+			printf("authentication failed, partial success = %s, next %s\n", partial_success ? "yes" : "no", next_auths.ToString().c_str());
 		}
 
 		void OnAuthenticationSuccess() override {
@@ -156,13 +157,22 @@ main(int argc, char* argv[])
 		std::string m_Username;
 	} callback;
 
-	if (argc != 2)
-		errx(1, "usage: %s [user@]host[:port]", argv[0]);
+	if (argc != 2 && argc != 3)
+		errx(1, "usage: %s [-d] [user@]host[:port]", argv[0]);
+
+    if (argc == 3) {
+        if (std::string(argv[1]) != "-d")
+		    errx(1, "usage: %s [-d] [user@]host[:port]", argv[0]);
+        RSSH::Trace::EnableAll();
+    }
 
 	std::string username, host;
 	int port;
-	if (!ParseConnectionSpecifier(argv[1], username, host, port))
-		errx(1, "unable to parse connection specifier");
+    {
+        int connect_arg = argc == 2 ? 1 : 2;
+        if (!ParseConnectionSpecifier(argv[connect_arg], username, host, port))
+            errx(1, "unable to parse connection specifier");
+    }
 
 	RSSH::Transport t(callback);
 	callback.SetTransport(t);
